@@ -12,14 +12,14 @@ Upon inspecting the binary we immediatly notice two things:
 
 By executing the binary we are prompted to input the length of some shellcode followed by the code itself.
 
-![[he_protecc-02.webp]]
+![](./images/he_protecc-02.webp)
 
 It would definitely be too easy if we could execute a `execve("/bin/sh",null,null)`. 
 Let's take a closer look at the binary to see what's really happening.
 # Looking around
 Disassembling the binary reveals an easy to read and understand code, let's look at the most important stuff.
 
-![[he_protecc-013.png]]
+![](./images/he_protecc-013.png)
 ## mmap my beloved
 
 > [!info]
@@ -30,9 +30,9 @@ The mmap call is easy to understand:
 - The **size** is `0x1000` bytes (one page or 4096 bytes).
 - The p**ermission** parameter is `RWX`: `001 | 010 | 100 = 111 (7)` 
 
-To understand the flags we can use `strace` and read the command from there:]
+To understand the flags we can use `strace` and read the command from there:
 
-![[he_protecc-012.png]]
+![](./images/he_protecc-012.png)
 
 These two flags simply signal that the mapped region is private to our process and not mapped to any file, this means the area is initialized with zeroes.
 
