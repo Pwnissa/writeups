@@ -22,7 +22,7 @@ Disassembling the binary reveals an easy to read and understand code, let's look
 ![](./images/he_protecc-013.png)
 ## mmap my beloved
 
-> [!info]
+> [!note]
 > **mmap**() creates a new mapping in the virtual address space of the calling process. In other words, it creates a new data area in a position and with permissions decided by the caller, it is used in dynamically loaded binaries and in some cases in heap allocation. 
 
 The mmap call is easy to understand:
