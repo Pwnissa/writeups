@@ -46,7 +46,7 @@ I'm not going to show the full `setup_seccomp()` disassembly as it is a bit ugly
 The `prctl` call sets the NO_NEW_PRIVS flag, why?  It is a security measure to stop privilege escalation put before a seccomp filter ([explanation](https://unix.stackexchange.com/questions/562260/why-we-need-to-set-no-new-privs-while-before-calling-seccomp-mode-filter)).
 The syscall sets a seccomp filter (317 = sys_seccomp) on the binary.
 
-> [!info]
+> [!note]
 > As the name suggests, seccomp is a mechanism to harden syscall access by evaluating a small program called a Berkeley Packet Filter (BPF) for every syscall. Based on the result, the syscall is either allowed or denied.
 
 So the questions becomes: What does the seccomp filter filter?
@@ -85,7 +85,7 @@ So what can we find after `0x500fff` but before `0x7fffffffffff`?
 
 Looking at the mappings with `vmmap` we can see that only one mapping has read and execution permission, and that is `vdso`.
 
-> [!info]
+> [!note]
 > **vDSO** (virtual dynamic shared object) is a kernel mechanism for exporting a carefully selected set of kernel space routines to user space applications so that applications can call these kernel space routines in-process, without incurring the performance penalty of a mode switch from user mode to kernel mode. ([Wikipedia](https://en.wikipedia.org/wiki/VDSO))
 
 By piping the instructions found in that memory area into `grep` we can see a few syscall instruction inside `vdso`, jumping to them should give us the syscall we need!
