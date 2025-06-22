@@ -8,7 +8,7 @@ Upon inspecting the binary we immediatly notice two things:
 1) **The security mitigations are very relaxed**: the GOT is writable (Partial RELRO) and the code area is not position independent (No PIE) and as such is not randomized.
 2) **The ELF is statically linked**: so we can exclude ret2libc and we have to ignore shenanigans with dynamic libraries this time.
 
-![[he_protecc-01.webp]]
+![](./images/he_protecc-018.webp)
 
 By executing the binary we are prompted to input the length of some shellcode followed by the code itself.
 
