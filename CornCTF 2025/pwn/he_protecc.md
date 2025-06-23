@@ -2,7 +2,7 @@ Solved by: Ub1k
 writeup by: Ub1k
 # Introduction
 
-This is the first pwn challange in the CornCTF 2025.
+This is the first pwn challenge in the CornCTF 2025.
 Upon inspecting the binary we immediatly notice two things:
 
 1) **The security mitigations are very relaxed**: the GOT is writable (Partial RELRO) and the code area is not position independent (No PIE) and as such is not randomized.
@@ -14,7 +14,7 @@ By executing the binary we are prompted to input the length of some shellcode fo
 
 ![](./images/he_protecc-02.webp)
 
-It would definitely be too easy if we could execute a `execve("/bin/sh",null,null)`. 
+It would definitely be too easy if we could execute a `execve("/bin/sh",null,null)` and get the shell. 
 Let's take a closer look at the binary to see what's really happening.
 # Looking around
 Disassembling the binary reveals an easy to read and understand code, let's look at the most important stuff.
@@ -24,13 +24,14 @@ Disassembling the binary reveals an easy to read and understand code, let's look
 
 > [!note]
 > **mmap**() creates a new mapping in the virtual address space of the calling process. In other words, it creates a new data area in a position and with permissions decided by the caller, it is used in dynamically loaded binaries and in some cases in heap allocation. 
+> In our case the program needs a mmap region because we don't have an area that is writable and executable at the same time.
 
 The mmap call is easy to understand:
 - New memory area is **mapped** at position `0x500000`.
 - The **size** is `0x1000` bytes (one page or 4096 bytes).
 - The p**ermission** parameter is `RWX`: `001 | 010 | 100 = 111 (7)` 
 
-To understand the flags we can use `strace` and read the command from there:
+To understand the flags we can use the `strace` command and read the instruction from there:
 
 ![](./images/he_protecc-012.png)
 
@@ -43,13 +44,13 @@ I'm not going to show the full `setup_seccomp()` disassembly as it is a bit ugly
 
 ![](./images/he_protecc-014.webp)
 
-The `prctl` call sets the NO_NEW_PRIVS flag, why?  It is a security measure to stop privilege escalation put before a seccomp filter ([explanation](https://unix.stackexchange.com/questions/562260/why-we-need-to-set-no-new-privs-while-before-calling-seccomp-mode-filter)).
-The syscall sets a seccomp filter (317 = sys_seccomp) on the binary.
+The `prctl` call sets the **NO_NEW_PRIVS** flag, why?  This is a security measure to stop privilege escalation made by malformed seccomp filter, so we put it before every seccomp installation ([explanation](https://unix.stackexchange.com/questions/562260/why-we-need-to-set-no-new-privs-while-before-calling-seccomp-mode-filter)).
+The next instruction, the syscall, installs a seccomp filter on the binary.
 
 > [!note]
 > As the name suggests, seccomp is a mechanism to harden syscall access by evaluating a small program called a Berkeley Packet Filter (BPF) for every syscall. Based on the result, the syscall is either allowed or denied.
 
-So the questions becomes: What does the seccomp filter filter?
+So the questions becomes: What does this seccomp filter allow?
 I was today years old when I learned that I don't need to manually decode seccomp filters... there exists a tool for that, thanks Marco. ([Github](https://github.com/david942j/seccomp-tools)): 
 
 So by executing `seccomp-tools dump ./protected` we get:
@@ -75,15 +76,17 @@ So by executing `seccomp-tools dump ./protected` we get:
 
 This is *not* a typical seccomp filter. Normally a seccomp filter checks the syscall number against a whitelist and returns if it is permitted or not, but here the filter loads the `RIP` at the moment of execution of the syscall and only returns ALLOW if the position is one of the following, else the process gets killed:
 
-- Before `0x3FFFFF`: but thats not possible because the address space starts at `0x400000` 
+- Before `0x3FFFFF`: but that's not possible because the address space starts at `0x400000` 
 - Between `0x4b7fff` and `0x4fffff`: but there are no syscalls in that region.
-- Between `0x500fff` and `0x7fffffffffff`:  No syscalls in the mmap region :( BUT WAIT
+- Between `0x500fff` and `0x7fffffffffff`:  After the mmap regio, so this is why we can't execute a syscall in the shellcode :( 
 
-So what can we find after `0x500fff` but before `0x7fffffffffff`?
+But WAIT, what can we find after `0x500fff` but before `0x7fffffffffff`?
+
+Let's run our debugger of choice and look at the mappings:
 
 ![](./images/he_protecc-015.webp)
 
-Looking at the mappings with `vmmap` we can see that only one mapping has read and execution permission, and that is `vdso`.
+Using `vmmap` we can see that only one mapping has read and execution permission, and that is `vdso`.
 
 > [!note]
 > **vDSO** (virtual dynamic shared object) is a kernel mechanism for exporting a carefully selected set of kernel space routines to user space applications so that applications can call these kernel space routines in-process, without incurring the performance penalty of a mode switch from user mode to kernel mode. ([Wikipedia](https://en.wikipedia.org/wiki/VDSO))
@@ -93,7 +96,7 @@ By piping the instructions found in that memory area into `grep` we can see a fe
 ![](./images/he_protecc-016.webp)
 # Leak & Pwn
 
-Here comes the problem, even if the ELF is not PIE, the stack and also `vdso` still get randomized by **ASLR**, even worse, the internal offsets also get randomized... But let's tackle the problem one after another:
+Here comes the problem, even if the ELF is not PIE, the stack and also `vdso` still get randomized by **ASLR**, even worse, the internal offsets also get randomized... But let's tackle one problem after another:
 
 ## The Leak
 
@@ -101,17 +104,18 @@ Using `p2p stack vdso` we can see 4 leaks on the stack for **vdso**.
 
 ![](./images/he_protecc-017.webp)
 
-## The Pwn
+## Assembly 
 
-Now comes the difficult part, we can't calculate the offset between the syscalls and our leak because we cannot guarantee that the internal offsets are constant, we need to scan the memory area...
+Now comes the *difficult* part, we can't calculate the offset between the syscalls and our leak because we cannot guarantee that the internal offsets are constant, we need to scan the memory area...
 
-The first part is easy, let's take the leak and put it into a register:
+The first part is easy, let's take the first leak and put it into a register:
 
 ```asm
 mov r8, [rbp - 0x218]
 ```
 
-Now let's scan the memory area:
+We could zero out the 12 least significant bits to align the address to a page start, but in our case it doesn't matter.
+Now let's scan the memory area for a syscall, remember that the opcode is `0x0F05` but we are in little-endian:
 
 ```asm
 loop:
@@ -121,7 +125,7 @@ cmp ax, 0x050f
 jne loop
 ```
 
-This code snipped increases r8 (pointer to vdso leak) and take two bytes, it then check if bytes are equal to the one representing a syscall and if not it loops. If it exits the loop, r8 will point to a valid syscall instruction, and we can continue with setting the registers for a execve call.
+This code snipped increases `r8` (pointer to `vdso` leak) and take two bytes, it then checks if bytes are equal to the one representing a syscall and if not it loops. If it exits the loop, `r8` will point to a valid syscall instruction, and we can continue with setting the other registers for an execve call.
 
 ```asm
 mov r9, {u64(b"/bin/sh\0")}
@@ -132,7 +136,7 @@ mov rdi, rsp
 xor rsi, rsi
 xor rdx, rdx
 
-jmp r8
+jmp r8 // <-- jump to syscall outside our mmap area
 ```
 
 and boom, we have a shell.
