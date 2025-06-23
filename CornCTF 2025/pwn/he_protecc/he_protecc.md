@@ -8,18 +8,18 @@ Upon inspecting the binary we immediatly notice two things:
 1) **The security mitigations are very relaxed**: the GOT is writable (Partial RELRO) and the code area is not position independent (No PIE) and as such is not randomized.
 2) **The ELF is statically linked**: so we can exclude ret2libc and we have to ignore shenanigans with dynamic libraries this time.
 
-![](he_protecc-018.webp)
+![](images/he_protecc-018.webp)
 
 By executing the binary we are prompted to input the length of some shellcode followed by the code itself.
 
-![](he_protecc-02.webp)
+![](images/he_protecc-02.webp)
 
 It would definitely be too easy if we could execute a `execve("/bin/sh",null,null)` and get the shell. 
 Let's take a closer look at the binary to see what's really happening.
 # Looking around
 Disassembling the binary reveals an easy to read and understand code, let's look at the most important stuff.
 
-![](he_protecc-013.png)
+![](images/he_protecc-013.png)
 ## mmap my beloved
 
 > [!note]
@@ -33,7 +33,7 @@ The mmap call is easy to understand:
 
 To understand the flags we can use the `strace` command and read the instruction from there:
 
-![](he_protecc-012.png)
+![](images/he_protecc-012.png)
 
 These two flags simply signal that the mapped region is private to our process and not mapped to any file, this means the area is initialized with zeroes.
 
@@ -42,7 +42,7 @@ A boring mmap region, nothing special here... sadly
 
 I'm not going to show the full `setup_seccomp()` disassembly as it is a bit ugly, the important part comes at the end:
 
-![](he_protecc-014.webp)
+![](images/he_protecc-014.webp)
 
 The `prctl` call sets the **NO_NEW_PRIVS** flag, why?  This is a security measure to stop privilege escalation made by malformed seccomp filter, so we put it before every seccomp installation ([explanation](https://unix.stackexchange.com/questions/562260/why-we-need-to-set-no-new-privs-while-before-calling-seccomp-mode-filter)).
 The next instruction, the syscall, installs a seccomp filter on the binary.
@@ -84,7 +84,7 @@ But WAIT, what can we find after `0x500fff` but before `0x7fffffffffff`?
 
 Let's run our debugger of choice and look at the mappings:
 
-![](he_protecc-015.webp)
+![](images/he_protecc-015.webp)
 
 Using `vmmap` we can see that only one mapping has read and execution permission, and that is `vdso`.
 
@@ -93,7 +93,7 @@ Using `vmmap` we can see that only one mapping has read and execution permission
 
 By piping the instructions found in that memory area into `grep` we can see a few syscall instruction inside `vdso`, jumping to them should give us the syscall we need!
 
-![](he_protecc-016.webp)
+![](images/he_protecc-016.webp)
 # Leak & Pwn
 
 Here comes the problem, even if the ELF is not PIE, the stack and also `vdso` still get randomized by **ASLR**, even worse, the internal offsets also get randomized... But let's tackle one problem after another:
@@ -102,7 +102,7 @@ Here comes the problem, even if the ELF is not PIE, the stack and also `vdso` st
 
 Using `p2p stack vdso` we can see 4 leaks on the stack for **vdso**.
 
-![](he_protecc-017.webp)
+![](images/he_protecc-017.webp)
 
 ## Assembly 
 
