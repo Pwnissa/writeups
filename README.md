@@ -3,3 +3,4 @@ Welcome to our central repository of Capture The Flag (CTF) writeups. Here we do
 # 🚩 CTFs Covered
 
 - CornCTF - 2025
+- TryHackMe - Industrial Intrusion CTF - 2025
